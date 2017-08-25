@@ -1,0 +1,572 @@
+#!/bin/bash
+
+##
+## CovGen
+## 
+## Copyright (C) 2017 Translational Genomics Research Institute
+##
+## This software may be modified and distributed under the terms
+## of the MIT license.  See the LICENSE file for details.
+##
+## Major Contributors: Austin Christofferson, Christophe Legendre 
+##
+## Description - Creates a target specific coverge file required by
+##			  MutSig. Please see https://github.com/tgen/CovGen
+##			  for further details.
+##
+## Usage = CovGen [Options] -f <reference.fa> -g <ensembl.gtf> -t <targets.bed> -s </path> 
+##
+## Options:
+##		-o <string>	Prefix for output files
+##		-f <file>		Reference genome fasta file
+##		-g <file>		Ensembl annotations in GTF format
+##		-t <file>		Exome capture targets bed file
+##		-s <path>		Full path to snpEff directory
+##		-b <file>		File of full paths to 6 BAM files
+##		-p <int>		Number of processors available
+##		-v <string>	SnpEff genome_version to use
+##		-e <file>		ENSGs to filter out
+##
+####################################################################
+####################################################################
+
+# Usage and Command line options
+
+#{{{
+
+usage="
+Program: $(basename "$0")  
+Version: v1.0.0
+Summary: Creates a target specific coverage file required by MutSig 
+ 
+Usage:   $(basename "$0") [Options] -o <prefix> -f <reference.fa> -g <ensembl.gtf> -t <targets.bed> -s </path> -v <dataBase>
+
+Options:
+	-o <string>	Prefix for output files
+	-f <file>		Reference genome fasta file
+	-g <file>		Ensembl annotations in GTF format
+	-t <file>		Exome capture targets bed file
+	-s <path>		Full path to snpEff directory
+	-b <file>		File of full paths to 6 BAM files
+	-p <int>		Number of processors available
+	-v <string>	SnpEff genome_version to use
+	-e <file>		ENSGs to filter out
+
+"
+
+# Print usage if help option specified or no options given.
+if [ "$*" == "--help" ] || [ "$*" == "-h" ] || [ "$*" == "" ]
+then
+	echo "${usage}"
+	exit 0
+fi
+
+# Set default process to use
+PROCESS=3
+
+# Set command line options
+while getopts ":f:g:t:s:b:p:o:v:e:" opt
+do
+	case $opt in
+		f)
+			if [ ! -f $OPTARG ]
+			then
+				echo
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			else
+				REF=$OPTARG
+			fi ;;
+		g)
+			if [ ! -f $OPTARG ]
+			then
+				echo
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			else
+				GTF=$OPTARG
+			fi ;;
+		t)
+			if [ ! -f $OPTARG ]
+			then
+				echo
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			else
+				TARGETS=$OPTARG
+			fi ;;
+		s)
+			if [ ! -d $OPTARG ]
+			then
+				echo
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			else
+				SNPEFFPATH=$OPTARG
+			fi ;;
+		b)
+			if [ ! -f $OPTARG ]
+			then
+				echo
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			else
+				BAMPATH=$OPTARG
+				BAMINT=1
+				for line in `cat $BAMPATH`
+				do
+					if [ ! -f ${line} ]
+					then
+						echo
+						echo ${line} in $BAMPATH is not a valid path.
+						echo Please check the path to your bam path list.
+						exit 1
+					else
+						eval "BAM$BAMINT=$line"
+						eval "BAMBASE$BAMINT=`basename $line`"
+						BAMINT=$((BAMINT + 1))
+					fi
+				done
+				BAMFLAG=Y
+			fi ;;
+		p)
+			if [[ ! $OPTARG =~ ^[0-9]+$ ]]
+			then
+				echo
+				echo $OPTARG is not an integer.
+				echo Please enter an integer for the processor option.
+				exit 1
+			else
+				PROCESS=$OPTARG
+			fi ;;
+		o)
+			OUT=$OPTARG ;;
+		v)
+			SNPEFFDB=$OPTARG ;;
+		e)
+			if [ -f $OPTARG ]
+			then
+				FILTER=$OPTARG
+			else
+				echo 
+				echo $OPTARG is not a valid file path.
+				echo Please check the path to your input list.
+				exit 1
+			fi ;;
+		:)
+			echo "Option -$OPTARG requires an argument." >&2
+			exit 1 ;;
+		\?)
+			echo "Invalid option: -$OPTARG" >&2 ;;
+
+	esac
+done
+
+# Check if all required options have been provided
+if [ -z $SNPEFFDB ] 
+then
+	echo "The -v snpEff database option is required."  
+	exit 1
+elif [ -z $OUT ]
+then  
+	echo "The -o output prefix option is required."
+	exit 1
+elif [ -z $SNPEFFPATH ] 
+then 
+	echo "The -s path to snpEFF option is required."
+	exit 1
+elif [ -z $TARGETS ] 
+then
+	echo "The -t targets file option is required."
+	exit 1
+elif [ -z $GTF ] 
+then
+	echo "The -g ensemble gtf option is required."
+	exit 1
+elif [ -z $REF ]
+then
+	echo "The -f reference fasta option is required." 
+	exit 1
+fi
+
+if [ -f ./CovGen ]
+then
+	BASEDIR=`pwd`
+elif [ $(dirname "$0") = "." ]
+then
+	BASEDIR=$(dirname  $(which "$0"))
+else
+	BASEDIR=$(dirname "$0")
+fi
+
+OUT=${OUT}_${SNPEFFDB}
+
+if [ -d $OUT ]
+then
+	echo
+	echo $OUT already exists and would cause a conflict.
+	echo Please change the output prefix.
+	exit 1
+else
+	mkdir $OUT
+fi 
+
+# Confirm all required tools are available
+
+# samtools
+type samtools >/dev/null 2>&1 || { echo >&2 "Require \"\samtools\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+# bedtools
+type bedtools >/dev/null 2>&1 || { echo >&2 "Require \"\bedtools\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+# gawk
+type gawk >/dev/null 2>&1 || { echo >&2 "Require \"\gawk\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+# perl
+type perl >/dev/null 2>&1 || { echo >&2 "Require \"\perl\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+# java
+type java >/dev/null 2>&1 || { echo >&2 "Require \"\java\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+# snpEff jar and perl file
+if [ -f ${SNPEFFPATH}/snpEff.jar ]
+then
+	if [ ! -f ${SNPEFFPATH}/scripts/vcfEffOnePerLine.pl ]
+	then
+		echo 
+		echo The vcfEffOnePerLine.pl file in your SnpEff install seems to be missing.
+		echo This perl script included with the snpEff tool is required.
+		echo Please double check your snpEff instalation and try again.
+		exit 1
+	fi
+else
+	echo 
+	echo The snpEff.jar file in your SnpEff install seems to be missing.
+	echo The snpEff tool is required.
+	echo Please double check your snpEff instalation and try again.
+	exit 1
+fi
+
+# python and related modules
+type python >/dev/null 2>&1 || { echo >&2 "Require \"\python\"  but it's not in the PATH.  Aborting."; exit -1; }
+
+python ${BASEDIR}/getALTsForTargetsSeqsForMutSig.py -v
+
+if [ $? -ne 0 ] 
+then
+	echo 
+	echo The provided pyhton script failed to return it\'s version information.
+	echo This is usualy caused by a missing module that is required by the program.
+	echo Install any missing modules and try again.
+	exit 1
+fi
+
+#}}}
+
+# [ Step 1 ]
+
+#{{{  
+
+# Pad the targets file by 125 on each end
+# Merge the padded targets 
+# Take off 25bp on each side to make a 100bp padded file
+gawk -F'\t' '{ OFS = "\t" ; print $1,$2 - 125,$3 + 125 }' ${TARGETS} | \
+	sort -k1,1 -k2,2n | \
+	bedtools merge -i - | \
+	gawk -F'\t' '{ $2 = $2+25 ; 
+	$3 = $3-25 ; 
+	OFS = "\t" ; 
+	print $0 }' > ${OUT}/${OUT}_step1.bed
+
+# Save expected Target Space for report
+EXPECSPACE="`gawk -F'\t' '{ SUM+=$3-$2 } END { print SUM }' ${OUT}/${OUT}_step1.bed `"
+
+#}}}
+
+# [ Step 2 ]
+
+#{{{ 
+
+# Filter out unwanted genes from the GTF 
+if [[ ! -z "${FILTER}" ]]
+then
+	gawk -F'[\t"]' 'FNR==NR{ a[$1]=$1;next } !($10 in a) { print $0 } ' ${FILTER} $GTF > ${OUT}/${OUT}_step2.bed
+else
+	cp $GTF ${OUT}/${OUT}_step2.bed
+fi
+
+# Make bed file of all genes in GTF that represents the start and stop for each gene
+# Merge the gene intervals together
+gawk -F'[\t"]' -v OUT=${OUT}/${OUT} 'FNR==NR { f[$12]=$10 } ; 
+	FNR==NR && $3 == "CDS" { t[$12]=$10 ; g[$10]=$10 ; next } ; 
+	{ if($10 in a && $10 in g) { 
+		if ($4 < b[$10] ) { b[$10]=$4 } ; 
+		if ($5 > c[$10]) { c[$10]=$5 }
+	} else if($10 in g) { 
+		a[$10]=$1 ; 
+		b[$10]=$4 ; 
+		c[$10]=$5 }
+	} END { 
+	for (i in a) { 
+		OFS = "\t" ; 
+		print a[i],b[i],c[i],i }
+	for (i in f) {
+		if (f[i] in g) {
+			t[i]=f[i]
+		}
+	}
+	for (i in t) {
+		OFS = "\t" ;
+		print i > OUT"_step2a.txt"  }
+	}' ${OUT}/${OUT}_step2.bed ${OUT}/${OUT}_step2.bed | sort -k1,1 -k2,2n > ${OUT}/${OUT}_step2b.bed
+
+gawk -F'\t' '{ OFS = "\t" ; print $1,$2-1,$3,$4 }' ${OUT}/${OUT}_step2b.bed > ${OUT}/${OUT}_step2c.bed
+
+bedtools merge -i ${OUT}/${OUT}_step2c.bed > ${OUT}/${OUT}_step2d.bed
+
+# Intersect the genes from the GTF and targets
+bedtools intersect -a ${OUT}/${OUT}_step1.bed -b ${OUT}/${OUT}_step2d.bed > ${OUT}/${OUT}_step2e.bed
+
+# Make 1 based bed file
+gawk -F'\t' '{ OFS = "\t" ; print $1,$2+1,$3,$4 }' ${OUT}/${OUT}_step2e.bed > ${OUT}/${OUT}_step2f.bed
+
+#}}}
+
+# [ Step 3 ]
+
+#{{{
+
+# Get depth for 6 bams. Bams should fall into the median range for depth in your cohort
+# Make sure to provide at least 2 female sample
+if [[ ! -z "$BAMFLAG" ]]
+then
+	# Samtools depth expects the bed file to be 0 based bed input and will start 
+	# tracking depth at the expected postion and output as 1 based
+	# Get only the positions that have > 10X coverage in 5 out of the 6 samples for chr1-chr23/X
+	# chr24/Y only requires 2 out of the 6 samples
+	# Output as a 1 based bed file
+
+	for BAM in $BAM1 $BAM2 $BAM3 $BAM4 $BAM5 $BAM6
+	do
+		BAMBASE="`basename $BAM`"
+		# split up getting depth on each bam to speed up the process
+		samtools depth -q 20 -Q 10 -a -b ${OUT}/${OUT}_step2e.bed $BAM > ${OUT}/${BAMBASE}.txt &
+	done
+
+	wait
+
+	file=${OUT}/${BAMBASE1}.txt
+
+	for BAM in ${OUT}/${BAMBASE2}.txt ${OUT}/${BAMBASE3}.txt ${OUT}/${BAMBASE4}.txt ${OUT}/${BAMBASE5}.txt ${OUT}/${BAMBASE6}.txt
+	do
+		paste "$file" <(cut -f3 "$BAM") > ${OUT}/_file.tmp && mv ${OUT}/_file.tmp ${OUT}/${OUT}_step3.temp
+		file=${OUT}/${OUT}_step3.temp
+	done
+
+	gawk -F'\t' '{ SAMCOUNT=0 } ;
+		$3 > 10 { SAMCOUNT+=1 } ;
+		$4 > 10 { SAMCOUNT+=1 } ;
+		$5 > 10 { SAMCOUNT+=1 } ;
+		$6 > 10 { SAMCOUNT+=1 } ;
+		$7 > 10 { SAMCOUNT+=1 } ;
+		$8 > 10 { SAMCOUNT+=1 } ; 
+		SAMCOUNT > 4 || ($1 == "Y" && SAMCOUNT > 1) {
+		OFS = "\t" ; print $1,$2-1,$2 }' ${OUT}/${OUT}_step3.temp | \
+	bedtools merge -i - | \
+	gawk -F'\t' '{ OFS = "\t" ; print $1,$2,$3 }' > ${OUT}/${OUT}_step3a.bed
+	
+	gawk -F'\t' '{ OFS = "\t" ; print $1,$2 + 1,$3 }' ${OUT}/${OUT}_step3a.bed > ${OUT}/${OUT}_step3b.bed
+
+	# Make gene list for final coverage table	
+	bedtools intersect -wa -u -a ${OUT}/${OUT}_step2c.bed -b ${OUT}/${OUT}_step3a.bed | cut -f4 > ${OUT}/${OUT}_step3c.txt
+	
+	rm ${OUT}/${OUT}_step3.temp ${OUT}/${BAMBASE1}.txt ${OUT}/${BAMBASE2}.txt ${OUT}/${BAMBASE3}.txt 
+	rm ${OUT}/${BAMBASE4}.txt ${OUT}/${BAMBASE5}.txt ${OUT}/${BAMBASE6}.txt
+	
+else
+	cat ${OUT}/${OUT}_step2e.bed > ${OUT}/${OUT}_step3a.bed
+	cat ${OUT}/${OUT}_step2f.bed > ${OUT}/${OUT}_step3b.bed
+
+	# Make gene list for final coverage table
+	bedtools intersect -wa -u -a ${OUT}/${OUT}_step2c.bed -b ${OUT}/${OUT}_step3a.bed | cut -f4 > ${OUT}/${OUT}_step3c.txt
+fi
+
+# Check total number of bases with coverage > 10x
+ACCSPACE="`gawk -F'\t' '{ SUM+=$3-$2 } END { print SUM }' ${OUT}/${OUT}_step3a.bed`"
+
+# Get count of genes
+GENECOUNT="`cat ${OUT}/${OUT}_step3c.txt | wc -l`"
+
+#}}}
+
+# [ Step 4 ]
+
+#{{{
+
+# Create VCFs  
+python ${BASEDIR}/getALTsForTargetsSeqsForMutSig.py \
+	-f ${REF} \
+	-o ${OUT}/${OUT}_step4 \
+	-t $PROCESS \
+	${OUT}/${OUT}_step3b.bed
+
+ #}}}
+
+# [ Step 5 ]
+
+#{{{
+
+# Set variable for first chomosome in vcf file
+# This will help reduce memory usage during the annotation step
+CHR="`head -n1 ${OUT}/${OUT}_step3b.bed | cut -f1`"
+
+# Annotatate each of the vcfs with snpEff
+# Convert to one effect per line
+# Capture the most deleterious effect for each variant per gene.
+for VCF in 1 2 3
+do
+	java -Xmx8g -jar ${SNPEFFPATH}/snpEff.jar \
+		-t \
+		-noStats \
+		-noLog \
+		-noLof \
+		-no-downstream \
+		-no-upstream \
+		-no-intergenic \
+		-noHgvs \
+		-noInteraction \
+		-noMotif \
+		-noNextProt \
+		-onlyTr ${OUT}/${OUT}_step2a.txt \
+		-noShiftHgvs \
+		-filterInterval ${OUT}/${OUT}_step3a.bed \
+		-c ${SNPEFFPATH}/snpEff.config \
+		${SNPEFFDB} ${OUT}/${OUT}_step4.m${VCF}.vcf | \
+	${SNPEFFPATH}/scripts/vcfEffOnePerLine.pl | \
+	gawk -F'[\t=|;]' -v CHR=$CHR '$1 !~ /^#/ && $1 != CHR { delete a ; CHR=$1 } ; 
+		$1 !~ /^#/ && $15 !~ /-/ && $17 !~ /ENSG/ && !( $1"@"$2"@"$11"@"$15 in a ) { 
+		OFS = "\t" ; 
+		print $1,$2,$3,$4,$5,$9,$11,$12,$14,$15,$17 ; 
+		a[$1"@"$2"@"$11"@"$15]=$1"@"$2"@"$11"@"$15 }' > ${OUT}/${OUT}_step5.m${VCF}.txt &
+done
+
+wait
+
+#}}}
+
+# [ Step 6 ]
+
+#{{{
+
+# Find all of the possible effects
+gawk -F'\t' '{ a[$8]=$8 } END { for (i in a) { print i }} ' ${OUT}/${OUT}_step5.m1.txt > ${OUT}/${OUT}_step6.m1.txt &
+gawk -F'\t' '{ a[$8]=$8 } END { for (i in a) { print i }} ' ${OUT}/${OUT}_step5.m2.txt > ${OUT}/${OUT}_step6.m2.txt &
+gawk -F'\t' '{ a[$8]=$8 } END { for (i in a) { print i }} ' ${OUT}/${OUT}_step5.m3.txt > ${OUT}/${OUT}_step6.m3.txt &
+
+wait
+
+#}}}
+
+# [ Step 7 ]
+
+#{{{
+
+# Get uniq list of effects and check against premade list
+cat ${OUT}/${OUT}_step6.m1.txt ${OUT}/${OUT}_step6.m2.txt ${OUT}/${OUT}_step6.m3.txt | \
+	sort | \
+	uniq > ${OUT}/${OUT}_step7.txt
+
+COUNT=`gawk -F'\t' 'BEGIN { SUM=0 } 
+	FNR==NR{a[$1]=$1;next} !($1 in a) { SUM=+1 } 
+	END { print SUM }' ${BASEDIR}/snpEff_ANN_mutation_type_dictionary_file.txt ${OUT}/${OUT}_step7.txt`
+
+if [ $COUNT -gt 0 ]
+then
+	echo 
+	echo The following snpEff Variant_Classification\'s do not exist in the mutation type dictionary:
+	echo
+	gawk -F'\t' 'FNR==NR{a[$1]=$1;next} !($1 in a) { print $0 }' ${BASEDIR}/snpEff_ANN_mutation_type_dictionary_file.txt ${OUT}/${OUT}_step7.txt
+	echo
+	echo 'Please add them to the file with the corresponding effect (null,nonsilent,silent,noncoding)'
+	exit 1 
+fi
+
+#}}}
+
+# [ Step 8 ]
+
+#{{{ 
+
+# Annotate variants with the Mutsig effects and output as 0 based bed file
+for INC in 1 2 3
+do
+	gawk -F'\t' 'FNR==NR{ a[$1]=$2 ; next } 
+		($8 in a) {
+			OFS = "\t" ;
+			if (a[$8] == "null") {
+				print $1,$2-1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,"nonsilent"
+			} else { 
+				print $1,$2-1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,a[$8] 
+			}
+		}' ${BASEDIR}/snpEff_ANN_mutation_type_dictionary_file.txt ${OUT}/${OUT}_step5.m${INC}.txt > ${OUT}/${OUT}_step8.m${INC}.bed & 
+done
+
+wait
+
+#}}}
+
+# [ Step 9 ]
+
+#{{{
+
+# Make coverage table template with full gene list
+gawk -F'\t' 'FNR==NR { a[$1]=$1 ; next } 
+	FNR==1 { print $0 } ; 
+	FNR > 1 { b[$0]=$0 ; next } 
+	END { 
+		x = asort(a) ; 
+		y = asort(b) ; 
+		for (i = 1; i <= x; i++) { 
+			for (j = 1; j <= y; j++) { 
+				OFS = "\t" ; print a[i],b[j] 
+			}
+		}
+	}' ${OUT}/${OUT}_step3c.txt ${BASEDIR}/template_exome_full192.coverage.txt > ${OUT}/${OUT}_step9.txt 
+
+#}}}
+
+# [ Step 10 ]
+
+#{{{
+
+# Create the final coverage file
+gawk -F'\t' 'NR==1 { print $0 ; next} 
+	FNR==NR{ a[$0]=0; next } 
+	($11"\t"$13"\t"$7 in a) { a[$11"\t"$13"\t"$7]+=1 } 
+	END { 
+		for (b in a) { OFS = "\t" ; print b,a[b] }
+	}' ${OUT}/${OUT}_step9.txt ${OUT}/${OUT}_step8.m1.bed ${OUT}/${OUT}_step8.m2.bed ${OUT}/${OUT}_step8.m3.bed > ${OUT}/${OUT}_step10.txt
+
+(head -n 1 ${OUT}/${OUT}_step10.txt && tail -n +2 ${OUT}/${OUT}_step10.txt | sort) > ${OUT}/${OUT}_exome_full192.coverage.txt
+
+#}}} 
+
+# Make Stats file, Clean up, and rename
+
+mv ${OUT}/${OUT}_step3c.txt ${OUT}/${OUT}_ENSG_List.txt
+mv ${OUT}/${OUT}_step3a.bed ${OUT}/${OUT}_Target_Space_0Based.bed
+mv ${OUT}/${OUT}_step3b.bed ${OUT}/${OUT}_Target_Space_1Based.bed
+
+echo -e "Expected Target Space:		$EXPECSPACE" >> ${OUT}/${OUT}_Stats.txt 
+echo -e "Filtered Target Space:		$ACCSPACE" >> ${OUT}/${OUT}_Stats.txt
+echo -e >> ${OUT}/${OUT}_Stats.txt
+echo -e "Number of ENSGs:		$GENECOUNT" >> ${OUT}/${OUT}_Stats.txt
+
+rm ${OUT}/${OUT}_step*
+
+
