@@ -1,11 +1,11 @@
 # CovGen
-Creates a capture specific exome_full192.coverage.txt file required by MutSig
+Creates a capture specific coverage file, like the exome_full192.coverage.txt file required by MutSig
 
 ## Summary
 MutSig provides a "territory" table (exome_full192.coverage.txt) for times when detailed coverage information is not available for each sample in your cohort. This coverage file may not properly represent the target space utilized by your capture kit and can adversely affect the results of your mutsig analysis.
 CovGen bridges the gap between detailed sample level coverage information and the exome_full192.coverage.txt table that MutSig provides with a target specific full coverage table.
 
-There are a few fundamental differences or caveats between the coverage file provided by MutSig and the one produced by CovGen. ENSG Ensembl IDs are used in place of HUGO symbols. This requires that the covariates file utilized by MutSig must also be converted to Ensembl IDs before running MutSig. After MutSig analysis the Ensambl ID's can easily be mapped back to HUGO ID's for readability. CovGen only considers protein coding genes as defined by CDC feature type in the user provided Ensembl GTF. Alternate alleles that are upstream or downstream for a given gene are excluded. 
+There are a few fundamental differences or caveats between the coverage file provided by MutSig and the one produced by CovGen. ENSG Ensembl IDs are used in place of HUGO symbols. This requires that the covariates file utilized by MutSig must also be converted to Ensembl IDs before running MutSig. After MutSig analysis the Ensembl ID's can easily be mapped back to HUGO ID's for readability. CovGen only considers protein coding genes as defined by CDS feature type in the user provided Ensembl GTF. Alternate alleles that are upstream or downstream for a given gene are excluded. 
 
 In addition to the coverage file, CovGen also outputs a bed file representing the final target space used to create the coverage file and an ENSG list. These two files should be used to filter your mutation file (MAF). This step helps to prevent MutSig from passing the following warning and zeroing out all noncoding mutations and coverage for the rest of the calculation. 
 
