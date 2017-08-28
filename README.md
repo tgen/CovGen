@@ -15,7 +15,7 @@ If you have annotated your variants using snpEff with the ANN annotation standar
 
 ## Workflow
 
-![Diagram](/CovGen.png)
+![Diagram](/CovGen.jpg)
 
 ## System requirements
 * 36G of ram
