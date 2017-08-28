@@ -13,6 +13,10 @@ In addition to the coverage file, CovGen also outputs a bed file representing th
 
 If you have annotated your variants using snpEff with the ANN annotation standard then the snpEff_ANN_mutation_type_dictionary_file.txt provided in this package can be used in place of the mutation_type_dictionary_file.txt provided by MutSig. It is a good idea to review the mapping of the ANN Variant_Classification to MutSig effects as a few of the mappings could be open to interpretation.
 
+## Workflow
+
+![Diagram](/CovGen.png)
+
 ## System requirements
 * 36G of ram
 * 8 processing cores
