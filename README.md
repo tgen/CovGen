@@ -42,7 +42,7 @@ If you have annotated your variants using snpEff with the ANN annotation standar
 | -o      | string  |Yes|  Prefix for output files|
 | -f      |file     |Yes| Reference genome FAST file |
 | -g      |file     |Yes| Ensembl annotations in GTF format |       
-| -t      | file    |Yes|  Non-Padded zero based exome capture targets BED file. CovGen pads each target by 100bp on each end for you. |      
+| -t      | file    |Yes|  Non-Padded zero based targets BED file. CovGen pads each target by 100bp on each end for you. |      
 | -s | path      |Yes| Full path to snpEff directory. Other annotators are not currently supported.     |
 | -v | string   |Yes| SnpEff genome_version to use. Other annotators are not currently supported.     |     
 | -b | file      |No| File of full paths to exactly 6 BAM files. These should fall into the median range of coverage of your cohort. Some probes are not as effective as others. This option uses 6 BAM files to filter out bases from your targets when 2 or more samples have <=10x coverage. For chrY, 5 samples with <=10x are filtered out. Please include at least 2 male samples to prevent all of Y being excluded.  |      
