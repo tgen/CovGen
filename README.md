@@ -1,5 +1,5 @@
 # CovGen
-Creates a capture specific coverage file, like the exome_full192.coverage.txt file required by MutSig.
+Creates a target specific coverage file, like the exome_full192.coverage.txt file required by MutSig.
 CovGen assumes you are familiar with MutSig created by [The Broad Institute](http://archive.broadinstitute.org/cancer/cga/mutsig).
 
 ## Summary
