@@ -42,15 +42,15 @@ Summary: Creates a target specific coverage file required by MutSig
 Usage:   $(basename "$0") [Options] -o <prefix> -f <reference.fa> -g <ensembl.gtf> -t <targets.bed> -s </path> -v <dataBase>
 
 Options:
-	-o <string>	Prefix for output files
-	-f <file>		Reference genome fasta file
-	-g <file>		Ensembl annotations in GTF format
-	-t <file>		Exome capture targets bed file
-	-s <path>		Full path to snpEff directory
-	-b <file>		File of full paths to 6 BAM files
-	-p <int>		Number of processors available
-	-v <string>	SnpEff genome_version to use
-	-e <file>		ENSGs to filter out
+	-o <string>	Prefix for output files				Required
+	-f <file>		Reference genome fasta file			Required
+	-g <file>		Ensembl annotations in GTF format		Required
+	-t <file>		Exome capture targets bed file		Required
+	-s <path>		Full path to snpEff directory			Required
+	-v <string>    SnpEff genome_version to use			Required
+	-b <file>		File of full paths to 6 BAM files		Optional
+	-p <int>		Number of processors available		Optional
+	-e <file>		ENSGs to filter out					Optional
 
 "
 
@@ -277,8 +277,9 @@ fi
 # Take off 25bp on each side to make a 100bp padded file
 gawk -F'\t' '{ OFS = "\t" ; print $1,$2 - 125,$3 + 125 }' ${TARGETS} | \
 	sort -k1,1 -k2,2n | \
+	gawk -F'\t' '$2 < 0 { $2 = 0 } ; { OFS = "\t" ; print $0 }' | \
 	bedtools merge -i - | \
-	gawk -F'\t' '{ $2 = $2+25 ; 
+	gawk -F'\t' '{ if($2 != 0) { $2 = $2+25 } ; 
 	$3 = $3-25 ; 
 	OFS = "\t" ; 
 	print $0 }' > ${OUT}/${OUT}_step1.bed
