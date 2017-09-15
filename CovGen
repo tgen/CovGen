@@ -277,7 +277,7 @@ fi
 # Take off 25bp on each side to make a 100bp padded file
 gawk -F'\t' '{ OFS = "\t" ; print $1,$2 - 125,$3 + 125 }' ${TARGETS} | \
 	sort -k1,1 -k2,2n | \
-	gawk -F'\t' '$2 < 0 { $2 = 0 } ; { OFS = "\t" ; print $0 }' | \
+	gawk -F'\t' '$2 <= 0 { $2 = 0 } ; { OFS = "\t" ; print $0 }' | \
 	bedtools merge -i - | \
 	gawk -F'\t' '{ if($2 != 0) { $2 = $2+25 } ; 
 	$3 = $3-25 ; 
