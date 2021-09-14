@@ -48,6 +48,7 @@ If you have annotated your variants using snpEff with the ANN annotation standar
 | -b | file      |No| File of full paths to exactly 6 BAM files. These should fall into the median range of coverage of your cohort. Some probes are not as effective as others. This option uses 6 BAM files to filter out bases from your targets when 2 or more samples have <=10x coverage. For chrY, 5 samples with <=10x are filtered out. Please include at least 2 male samples to prevent all of Y being excluded.  |      
 | -p | int       |No| Number of processors available. The VCF generation step requires the number of processors available to be set. All other steps will automatically use all cores available. Default = 3   |
 | -e | file      |No| List of ENSGs to filter out.                 |
+| -m | (flag) |No| If SnpEff execution should be multi-threaded. Equivalently, if the "use multi-threading" argument `-t` should be passed as argument to SnpEff.|
 
 ## Usage
 To get the arguments and options to the script, run:  
@@ -75,7 +76,8 @@ CovGen -o Agilent_SureSelect_V5_plusUTR \
   -v GRCh37.74 \
   -p 25 \
   -b list_of_six_bam_files.txt \
-  -e ENSG_list_to_filter_out.txt 
+  -e ENSG_list_to_filter_out.txt \
+  -m
 ```
 
 
