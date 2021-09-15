@@ -26,6 +26,7 @@
 ##		-p <int>		Number of processors available
 ##		-v <string>	SnpEff genome_version to use
 ##		-e <file>		ENSGs to filter out
+##		-m				Use SnpEff multi-threading
 ##
 ####################################################################
 ####################################################################
@@ -42,16 +43,16 @@ Summary: Creates a target specific coverage file required by MutSig
 Usage:   $(basename "$0") [Options] -o <prefix> -f <reference.fa> -g <ensembl.gtf> -t <targets.bed> -s </path> -v <dataBase>
 
 Options:
-	-o <string>	Prefix for output files				Required
-	-f <file>		Reference genome fasta file			Required
-	-g <file>		Ensembl annotations in GTF format		Required
-	-t <file>		Exome capture targets bed file		Required
-	-s <path>		Full path to snpEff directory			Required
-	-v <string>    SnpEff genome_version to use			Required
-	-b <file>		File of full paths to 6 BAM files		Optional
-	-p <int>		Number of processors available		Optional
-	-e <file>		ENSGs to filter out					Optional
-
+	-o <string>	Prefix for output files			Required
+	-f <file>  	Reference genome fasta file		Required
+	-g <file>	Ensembl annotations in GTF format	Required
+	-t <file>	Exome capture targets bed file		Required
+	-s <path>	Full path to snpEff directory		Required
+	-v <string>	SnpEff genome_version to use		Required
+	-b <file>	File of full paths to 6 BAM files	Optional
+	-p <int>	Number of processors available		Optional
+	-e <file>	ENSGs to filter out			Optional
+	-m		Use SnpEff multi-threading		Optional
 "
 
 # Print usage if help option specified or no options given.
@@ -65,7 +66,7 @@ fi
 PROCESS=3
 
 # Set command line options
-while getopts ":f:g:t:s:b:p:o:v:e:" opt
+while getopts ":f:g:t:s:b:p:o:v:e:m" opt
 do
 	case $opt in
 		f)
@@ -158,6 +159,8 @@ do
 				echo Please check the path to your input list.
 				exit 1
 			fi ;;
+		m)
+			EXTRA_SNPEFF_ARGS="${EXTRA_SNPEFF_ARGS} -t" ;;
 		:)
 			echo "Option -$OPTARG requires an argument." >&2
 			exit 1 ;;
@@ -465,7 +468,7 @@ CHR="`head -n1 ${OUT}/${OUT}_step3b.bed | cut -f1`"
 for VCF in 1 2 3
 do
 	java -Xmx8g -jar ${SNPEFFPATH}/snpEff.jar \
-		-t \
+		${EXTRA_SNPEFF_ARGS} \
 		-noStats \
 		-noLog \
 		-noLof \
